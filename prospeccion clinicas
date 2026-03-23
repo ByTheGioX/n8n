@@ -2,12 +2,12 @@
   "nodes": [
     {
       "parameters": {
-        "jsCode": "const row = $input.first().json;\n\n// Limpiar teléfono\nconst telefonoRaw = String(row.numero || '');\nconst telefonoLimpio = telefonoRaw.replace(/[^0-9]/g, '');\n\nconst nombre = row.nombre || 'la clínica';\nconst telefono = telefonoLimpio;\nconst website = row.web || '';\nconst email = row.correo || '';\nconst instagram = row.Instagram || '';\nconst status = row.Status || '';\n\nreturn [{\n  json: {\n    nombre,\n    telefono,\n    website,\n    email,\n    instagram,\n    status,\n    telefonoUrl: `https://wa.me/${telefono}`\n  }\n}];"
+        "jsCode": "const results = [];\nfor (const item of $input.all()) {\n  const row = item.json;\n  const telefonoRaw = String(row.numero || '');\n  const telefonoLimpio = telefonoRaw.replace(/[^0-9]/g, '');\n  results.push({\n    json: {\n      nombre: row.nombre || 'la clínica',\n      telefono: telefonoLimpio,\n      website: row.web || '',\n      email: row.correo || '',\n      instagram: row.Instagram || '',\n      status: row.Status || '',\n      telefonoUrl: `https://wa.me/${telefonoLimpio}`\n    }\n  });\n}\nreturn results;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        416,
+        636,
         -48
       ],
       "id": "3f43bde9-cab0-4d27-9af0-f62af4e50376",
@@ -40,7 +40,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        624,
+        844,
         -48
       ],
       "id": "36fb1596-37f5-47f9-bd03-05894e76d988",
@@ -54,12 +54,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const iaResponse = $input.first().json;\nconst mensajeWA = iaResponse.choices?.[0]?.message?.content?.trim() || 'Hola, ¿cómo están gestionando actualmente las citas por WhatsApp?';\n\nconst datos = $('Preparar datos lead').first().json;\n\nreturn [{\n  json: {\n    nombre: datos.nombre,\n    telefono: datos.telefono,\n    website: datos.website,\n    email: datos.email,\n    instagram: datos.instagram,\n    telefonoUrl: datos.telefonoUrl,\n    mensajeWA\n  }\n}];"
+        "jsCode": "// ============================================================\n// CONFIGURAR AQUÍ los Chat IDs de Telegram de cada socio.\n// Para obtener el chat ID de un socio:\n//   1. El socio debe iniciar conversación con el bot\n//   2. Enviar /start al bot\n//   3. Consultar: https://api.telegram.org/bot<TOKEN>/getUpdates\n// ============================================================\nconst socios = [\n  { nombre: 'Socio 1', chatId: '1229873682' },\n  { nombre: 'Socio 2', chatId: 'CHAT_ID_SOCIO_2' },\n  { nombre: 'Socio 3', chatId: 'CHAT_ID_SOCIO_3' }\n];\n\nconst results = [];\nconst iaItems = $input.all();\nconst datosItems = $('Preparar datos lead').all();\n\nfor (let i = 0; i < iaItems.length; i++) {\n  const iaResponse = iaItems[i].json;\n  const mensajeWA = iaResponse.choices?.[0]?.message?.content?.trim() || 'Hola, ¿cómo están gestionando actualmente las citas por WhatsApp?';\n  const datos = datosItems[i]?.json || {};\n  const socio = socios[i % 3];\n\n  results.push({\n    json: {\n      nombre: datos.nombre,\n      telefono: datos.telefono,\n      website: datos.website,\n      email: datos.email,\n      instagram: datos.instagram,\n      telefonoUrl: datos.telefonoUrl,\n      mensajeWA,\n      socioChatId: socio.chatId,\n      socioNombre: socio.nombre\n    }\n  });\n}\n\nreturn results;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        832,
+        1052,
         -48
       ],
       "id": "4143fb7b-a7e2-4b10-8dc4-5a7f8b46143b",
@@ -105,9 +105,7 @@
             }
           ]
         },
-        "options": {
-          "returnFirstMatch": true
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -116,13 +114,26 @@
         -32
       ],
       "id": "59bff280-c791-4a5c-b8e0-ca005275cc17",
-      "name": "Leer siguiente lead pendiente",
+      "name": "Leer leads pendientes",
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "l5yTT99aSstRvR5v",
           "name": "giovannystartup@gmailc.om"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tomar los primeros 3 leads pendientes (uno por socio)\nconst items = $input.all().filter(item => item.json.nombre && item.json.nombre !== '');\nif (items.length === 0) {\n  // Retorna item vacío para que el IF lo dirija a 'Notificar sin leads'\n  return [{ json: { nombre: '', noLeads: true } }];\n}\nreturn items.slice(0, 3);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        216,
+        -32
+      ],
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Limitar a 3 leads"
     },
     {
       "parameters": {
@@ -152,7 +163,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        208,
+        416,
         -32
       ],
       "id": "b39cf748-181b-49fe-9205-ba97a1a078ec",
@@ -160,8 +171,8 @@
     },
     {
       "parameters": {
-        "chatId": "1229873682",
-        "text": "=🏥 *LEAD PROSPECCIÓN*\n\n*Clínica:* {{ $json.nombre }}\n*Teléfono:* {{ $json.telefono }}\n*Website:* {{ $json.website || 'No disponible' }}\n*Instagram:* {{ $json.instagram || 'No disponible' }}\n*Email:* {{ $json.email || 'No disponible' }}\n\n📱 *Abrir WhatsApp:*\n{{ $json.telefonoUrl }}\n\n━━━━━━━━━━━━━━━━━━\n✉️ *MENSAJE — COPIAR Y PEGAR:*\n━━━━━━━━━━━━━━━━━━\n{{ $json.mensajeWA }}\n━━━━━━━━━━━━━━━━━━\n\n✅ Responde a este mensaje con:\n• *enviado* — cuando lo hayas mandado\n• *interesado* — si respondió positivo\n• *no interesado* — si no quiere\n• *sin numero* — si el número no funciona",
+        "chatId": "={{ $json.socioChatId }}",
+        "text": "=🏥 *LEAD PROSPECCIÓN — {{ $json.socioNombre }}*\n\n*Clínica:* {{ $json.nombre }}\n*Teléfono:* {{ $json.telefono }}\n*Website:* {{ $json.website || 'No disponible' }}\n*Instagram:* {{ $json.instagram || 'No disponible' }}\n*Email:* {{ $json.email || 'No disponible' }}\n\n📱 *Abrir WhatsApp:*\n{{ $json.telefonoUrl }}\n\n━━━━━━━━━━━━━━━━━━\n✉️ *MENSAJE — COPIAR Y PEGAR:*\n━━━━━━━━━━━━━━━━━━\n{{ $json.mensajeWA }}\n━━━━━━━━━━━━━━━━━━\n\n✅ Responde a este mensaje con:\n• *enviado* — cuando lo hayas mandado\n• *interesado* — si respondió positivo\n• *no interesado* — si no quiere\n• *sin numero* — si el número no funciona",
         "additionalFields": {
           "appendAttribution": false,
           "disable_web_page_preview": true,
@@ -171,7 +182,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1040,
+        1260,
         -48
       ],
       "id": "00400a93-5153-4530-83cd-945a40bd98b0",
@@ -200,7 +211,7 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "nombre": "={{ $('Preparar datos lead').item.json.nombre }}",
+            "nombre": "={{ $json.nombre }}",
             "fecha_contacto": "={{ new Date().toLocaleDateString('es-VE', {timeZone: 'America/Caracas'}) }}",
             "status_prospecto": "mensaje contacto enviado"
           },
@@ -308,7 +319,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        1248,
+        1468,
         -48
       ],
       "id": "ed697ed8-a0bc-40c1-9946-d83accd27dbb",
@@ -331,7 +342,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        208,
+        416,
         208
       ],
       "id": "c94b9fab-05fd-4620-a703-92df85d7b688",
@@ -369,7 +380,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const msg = $input.first().json.message?.text?.toLowerCase()?.trim() || '';\nconst replyTo = $input.first().json.message?.reply_to_message?.text || '';\n\n// Extraer nombre de clínica del mensaje original de Telegram\nconst matchNombre = replyTo.match(/Cl[ií]nica:\\s*(.+)/);\nconst nombreClinica = matchNombre ? matchNombre[1].trim() : null;\n\n// Detectar comando\nlet nuevoStatus = null;\nif (msg.includes('no interesado')) nuevoStatus = 'no_interesado';\nelse if (msg.includes('sin numero')) nuevoStatus = 'sin_numero';\nelse if (msg.includes('interesado')) nuevoStatus = 'interesado';\nelse if (msg.includes('enviado')) nuevoStatus = 'enviado';\nelse if (msg.includes('demo')) nuevoStatus = 'demo';\nelse if (msg.includes('cerrado')) nuevoStatus = 'cerrado';\n\nif (!nombreClinica || !nuevoStatus) {\n  return [{ json: { valido: false } }];\n}\n\nreturn [{ json: { valido: true, nombreClinica, nuevoStatus } }];"
+        "jsCode": "const msg = $input.first().json.message?.text?.toLowerCase()?.trim() || '';\nconst replyTo = $input.first().json.message?.reply_to_message?.text || '';\nconst fromChatId = String($input.first().json.message?.chat?.id || '');\n\n// Extraer nombre de clínica del mensaje original de Telegram\nconst matchNombre = replyTo.match(/Cl[ií]nica:\\s*(.+)/);\nconst nombreClinica = matchNombre ? matchNombre[1].trim() : null;\n\n// Detectar comando\nlet nuevoStatus = null;\nif (msg.includes('no interesado')) nuevoStatus = 'no_interesado';\nelse if (msg.includes('sin numero')) nuevoStatus = 'sin_numero';\nelse if (msg.includes('interesado')) nuevoStatus = 'interesado';\nelse if (msg.includes('enviado')) nuevoStatus = 'enviado';\nelse if (msg.includes('demo')) nuevoStatus = 'demo';\nelse if (msg.includes('cerrado')) nuevoStatus = 'cerrado';\n\nif (!nombreClinica || !nuevoStatus) {\n  return [{ json: { valido: false } }];\n}\n\nreturn [{ json: { valido: true, nombreClinica, nuevoStatus, fromChatId } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -550,7 +561,7 @@
     },
     {
       "parameters": {
-        "chatId": "1229873682",
+        "chatId": "={{ $('Parsear respuesta').item.json.fromChatId }}",
         "text": "=✅ *{{ $('Parsear respuesta').item.json.nombreClinica }}* actualizado a: *{{ $('Parsear respuesta').item.json.nuevoStatus }}*",
         "additionalFields": {
           "appendAttribution": false,
@@ -612,14 +623,25 @@
       "main": [
         [
           {
-            "node": "Leer siguiente lead pendiente",
+            "node": "Leer leads pendientes",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Leer siguiente lead pendiente": {
+    "Leer leads pendientes": {
+      "main": [
+        [
+          {
+            "node": "Limitar a 3 leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limitar a 3 leads": {
       "main": [
         [
           {
