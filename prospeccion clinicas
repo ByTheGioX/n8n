@@ -1,0 +1,712 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\n\n// Limpiar teléfono\nconst telefonoRaw = String(row.numero || '');\nconst telefonoLimpio = telefonoRaw.replace(/[^0-9]/g, '');\n\nconst nombre = row.nombre || 'la clínica';\nconst telefono = telefonoLimpio;\nconst website = row.web || '';\nconst email = row.correo || '';\nconst instagram = row.Instagram || '';\nconst status = row.Status || '';\n\nreturn [{\n  json: {\n    nombre,\n    telefono,\n    website,\n    email,\n    instagram,\n    status,\n    telefonoUrl: `https://wa.me/${telefono}`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -48
+      ],
+      "id": "3f43bde9-cab0-4d27-9af0-f62af4e50376",
+      "name": "Preparar datos lead"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://vigoma.com"
+            },
+            {
+              "name": "X-Title",
+              "value": "VIGOMA Prospeccion"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"openai/gpt-4o-mini\",\n  \"max_tokens\": 300,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Eres un especialista en ventas B2B para VIGOMA, una agencia venezolana de automatización. Tu tarea es redactar mensajes de primer contacto por WhatsApp para clínicas médicas privadas en Venezuela.\\n\\n## Contexto de VIGOMA\\nVIGOMA ofrece un sistema de recepcionista virtual que gestiona citas médicas por WhatsApp de forma automática, 24/7. El sistema agenda, modifica, cancela citas y envía recordatorios, sin necesidad de que el personal esté disponible.\\n\\n## Tu tarea\\nGenerar DOS mensajes cortos y separados. El primero verifica que hablas con la persona correcta. El segundo abre la conversación con el dolor real del negocio.\\n\\nDevuelve los dos mensajes separados por esta línea exacta:\\n---\\nSin ningún texto adicional antes ni después.\\n\\n## MENSAJE 1 — Verificación de contacto\\nObjetivo: confirmar que hablas con administración o gerencia.\\n- Saluda con buenos días o buenas tardes de forma natural\\n- Menciona el nombre de la clínica\\n- Pregunta directamente si hablas con administración o con quien toma decisiones\\n- Máximo 2 líneas\\n- Sin emojis\\n- Sin mencionar nada del producto todavía\\n\\n## MENSAJE 2 — Apertura con dolor real\\nObjetivo: generar curiosidad conectando con un problema real, sin hacer pitch todavía.\\n- Máximo 3 líneas\\n- Conecta con el dolor de perder pacientes por no poder responder citas fuera de horario\\n- Una sola pregunta al final sobre su situación actual\\n- Sin mencionar el producto, la empresa ni la solución\\n- Sin emojis excesivos — máximo 1 si queda natural\\n- Tono venezolano, cercano, como alguien que encontró algo útil\\n\\n## Reglas generales\\n- Texto plano, sin asteriscos, sin Markdown\\n- No menciones precios\\n- No menciones inteligencia artificial ni IA\\n- No digas VIGOMA ni agencia en ninguno de los dos mensajes\\n- No uses palabras como: solución innovadora, optimizar, potenciar, transformar, plataforma\\n- No hagas más de una pregunta por mensaje\\n\\n## Formato de respuesta\\nDevuelve exactamente esto y nada más:\\n[Mensaje 1]\\n---\\n[Mensaje 2]\\n\\nSin comillas, sin títulos, sin explicaciones, sin notas.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Genera los mensajes para esta clínica:\\n\\nnombre: {{ $json.nombre }}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        -48
+      ],
+      "id": "36fb1596-37f5-47f9-bd03-05894e76d988",
+      "name": "IA - Generar mensaje",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BK4WQBA9e9y1I8xm",
+          "name": "OpenRouter"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const iaResponse = $input.first().json;\nconst mensajeWA = iaResponse.choices?.[0]?.message?.content?.trim() || 'Hola, ¿cómo están gestionando actualmente las citas por WhatsApp?';\n\nconst datos = $('Preparar datos lead').first().json;\n\nreturn [{\n  json: {\n    nombre: datos.nombre,\n    telefono: datos.telefono,\n    website: datos.website,\n    email: datos.email,\n    instagram: datos.instagram,\n    telefonoUrl: datos.telefonoUrl,\n    mensajeWA\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        -48
+      ],
+      "id": "4143fb7b-a7e2-4b10-8dc4-5a7f8b46143b",
+      "name": "Armar mensaje final"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 45 8-11,13-15 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -192,
+        -32
+      ],
+      "id": "687a11f7-5a08-4eeb-b09d-a6404040365d",
+      "name": "Cada 3 horas"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1m9yfHWVsi3Psok8uFWbxrGLtta2s52GJli6X5Vb50uk",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Hoja 1",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status_prospecto",
+              "lookupValue": "pendiente"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        16,
+        -32
+      ],
+      "id": "59bff280-c791-4a5c-b8e0-ca005275cc17",
+      "name": "Leer siguiente lead pendiente",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "l5yTT99aSstRvR5v",
+          "name": "giovannystartup@gmailc.om"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "check-lead-exists",
+              "leftValue": "={{ $json.nombre }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        208,
+        -32
+      ],
+      "id": "b39cf748-181b-49fe-9205-ba97a1a078ec",
+      "name": "¿Hay lead pendiente?"
+    },
+    {
+      "parameters": {
+        "chatId": "1229873682",
+        "text": "=🏥 *LEAD PROSPECCIÓN*\n\n*Clínica:* {{ $json.nombre }}\n*Teléfono:* {{ $json.telefono }}\n*Website:* {{ $json.website || 'No disponible' }}\n*Instagram:* {{ $json.instagram || 'No disponible' }}\n*Email:* {{ $json.email || 'No disponible' }}\n\n📱 *Abrir WhatsApp:*\n{{ $json.telefonoUrl }}\n\n━━━━━━━━━━━━━━━━━━\n✉️ *MENSAJE — COPIAR Y PEGAR:*\n━━━━━━━━━━━━━━━━━━\n{{ $json.mensajeWA }}\n━━━━━━━━━━━━━━━━━━\n\n✅ Responde a este mensaje con:\n• *enviado* — cuando lo hayas mandado\n• *interesado* — si respondió positivo\n• *no interesado* — si no quiere\n• *sin numero* — si el número no funciona",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        -48
+      ],
+      "id": "00400a93-5153-4530-83cd-945a40bd98b0",
+      "name": "Enviar lead a Telegram",
+      "webhookId": "3d274d1a-0a89-4932-8f6b-5d0d648e16be",
+      "credentials": {
+        "telegramApi": {
+          "id": "qCyVRsvxKtamudJ5",
+          "name": "Vigoma Mensajes Clinicas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1m9yfHWVsi3Psok8uFWbxrGLtta2s52GJli6X5Vb50uk",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Hoja 1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nombre": "={{ $('Preparar datos lead').item.json.nombre }}",
+            "fecha_contacto": "={{ new Date().toLocaleDateString('es-VE', {timeZone: 'America/Caracas'}) }}",
+            "status_prospecto": "mensaje contacto enviado"
+          },
+          "matchingColumns": [
+            "nombre"
+          ],
+          "schema": [
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "nombre",
+              "displayName": "nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "web",
+              "displayName": "web",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "correo",
+              "displayName": "correo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Instagram",
+              "displayName": "Instagram",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_prospecto",
+              "displayName": "status_prospecto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_contacto",
+              "displayName": "fecha_contacto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1248,
+        -48
+      ],
+      "id": "ed697ed8-a0bc-40c1-9946-d83accd27dbb",
+      "name": "Marcar como enviado",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "l5yTT99aSstRvR5v",
+          "name": "giovannystartup@gmailc.om"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1229873682",
+        "text": "😴 No hay leads pendientes por ahora.\n\nTodos los contactos han sido procesados o no hay nuevos registros en la base de datos.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        208
+      ],
+      "id": "c94b9fab-05fd-4620-a703-92df85d7b688",
+      "name": "Notificar sin leads",
+      "webhookId": "26239d22-91de-4aa2-9f2b-348f72181f4c",
+      "credentials": {
+        "telegramApi": {
+          "id": "qCyVRsvxKtamudJ5",
+          "name": "Vigoma Mensajes Clinicas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -192,
+        464
+      ],
+      "id": "30544ef9-e39a-4382-a568-a351235dbc58",
+      "name": "Telegram - Respuesta tuya",
+      "webhookId": "a84a8bd6-c486-4ff0-a505-950878ff64e5",
+      "credentials": {
+        "telegramApi": {
+          "id": "qCyVRsvxKtamudJ5",
+          "name": "Vigoma Mensajes Clinicas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message?.text?.toLowerCase()?.trim() || '';\nconst replyTo = $input.first().json.message?.reply_to_message?.text || '';\n\n// Extraer nombre de clínica del mensaje original de Telegram\nconst matchNombre = replyTo.match(/Cl[ií]nica:\\s*(.+)/);\nconst nombreClinica = matchNombre ? matchNombre[1].trim() : null;\n\n// Detectar comando\nlet nuevoStatus = null;\nif (msg.includes('no interesado')) nuevoStatus = 'no_interesado';\nelse if (msg.includes('sin numero')) nuevoStatus = 'sin_numero';\nelse if (msg.includes('interesado')) nuevoStatus = 'interesado';\nelse if (msg.includes('enviado')) nuevoStatus = 'enviado';\nelse if (msg.includes('demo')) nuevoStatus = 'demo';\nelse if (msg.includes('cerrado')) nuevoStatus = 'cerrado';\n\nif (!nombreClinica || !nuevoStatus) {\n  return [{ json: { valido: false } }];\n}\n\nreturn [{ json: { valido: true, nombreClinica, nuevoStatus } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        464
+      ],
+      "id": "524a67bd-65f5-48da-87ea-c07a98e9b23a",
+      "name": "Parsear respuesta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "check-valido",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        208,
+        464
+      ],
+      "id": "fdf19b3d-02f4-4742-a207-f3433ac46902",
+      "name": "¿Respuesta válida?"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1m9yfHWVsi3Psok8uFWbxrGLtta2s52GJli6X5Vb50uk",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Hoja 1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nombre": "={{ $json.nombreClinica }}",
+            "status_prospecto": "={{ $json.nuevoStatus }}"
+          },
+          "matchingColumns": [
+            "nombre"
+          ],
+          "schema": [
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "nombre",
+              "displayName": "nombre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "web",
+              "displayName": "web",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "correo",
+              "displayName": "correo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Instagram",
+              "displayName": "Instagram",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_prospecto",
+              "displayName": "status_prospecto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_contacto",
+              "displayName": "fecha_contacto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        416,
+        464
+      ],
+      "id": "2d8fd9c5-7ca1-4dbb-a8f0-59a697bb0ed1",
+      "name": "Actualizar status lead",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "l5yTT99aSstRvR5v",
+          "name": "giovannystartup@gmailc.om"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1229873682",
+        "text": "=✅ *{{ $('Parsear respuesta').item.json.nombreClinica }}* actualizado a: *{{ $('Parsear respuesta').item.json.nuevoStatus }}*",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        464
+      ],
+      "id": "f9c20685-a91d-4b44-9c9e-efe288742bb8",
+      "name": "Confirmar actualización",
+      "webhookId": "87587f0d-5e89-4f3c-84d0-161e16c85633",
+      "credentials": {
+        "telegramApi": {
+          "id": "qCyVRsvxKtamudJ5",
+          "name": "Vigoma Mensajes Clinicas"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Preparar datos lead": {
+      "main": [
+        [
+          {
+            "node": "IA - Generar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA - Generar mensaje": {
+      "main": [
+        [
+          {
+            "node": "Armar mensaje final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar mensaje final": {
+      "main": [
+        [
+          {
+            "node": "Enviar lead a Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cada 3 horas": {
+      "main": [
+        [
+          {
+            "node": "Leer siguiente lead pendiente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer siguiente lead pendiente": {
+      "main": [
+        [
+          {
+            "node": "¿Hay lead pendiente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay lead pendiente?": {
+      "main": [
+        [
+          {
+            "node": "Preparar datos lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notificar sin leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar lead a Telegram": {
+      "main": [
+        [
+          {
+            "node": "Marcar como enviado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Respuesta tuya": {
+      "main": [
+        [
+          {
+            "node": "Parsear respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear respuesta": {
+      "main": [
+        [
+          {
+            "node": "¿Respuesta válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Respuesta válida?": {
+      "main": [
+        [
+          {
+            "node": "Actualizar status lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar status lead": {
+      "main": [
+        [
+          {
+            "node": "Confirmar actualización",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ec8d7b23062bd286cbea350da7f93b98322d7c605b24c8fea5812d2ef1bd3acc"
+  }
+}
