@@ -101,7 +101,7 @@
         "operation": "send",
         "phoneNumberId": "=990298210839054",
         "recipientPhoneNumber": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
-        "textBody": "={{ $json.output }}",
+        "textBody": "={{ $json.messageText }}",
         "additionalFields": {}
       },
       "type": "n8n-nodes-base.whatsApp",
@@ -125,7 +125,7 @@
         "promptType": "define",
         "text": "={{ $json.history }}",
         "options": {
-          "systemMessage": "=# Overview\n\nEres un asistente de turnos. Tu función es ayudar a los usuarios a gestionar sus citas. Responde siempre en español neutro de manera amigable y concisa.\n\n**IMPORTANTE:** No transformes el horario a UTC, usa directamente el horario que te pasa el usuario.\n\n**IMPORTANTE:** Toda la conversación debe centralizarse en el agente. Sigue estas reglas de saludo e intención.\n\n**IMPORTANTE:** Nunca menciones procesos internos, herramientas, bases de datos, calendarios, ni ningún detalle técnico al usuario. El usuario solo debe ver respuestas naturales y amigables, como si fuera una recepcionista humana.\n\n**IMPORTANTE — FORMATO DE HORA:** Todas las horas que muestres al usuario deben estar en formato de 12 horas con AM/PM. Ejemplos: 8:00 AM, 9:00 AM, 1:00 PM, 2:00 PM, 5:00 PM. Nunca uses formato de 24 horas al hablar con el usuario.\n\n---\n\n### Detección de intención y saludo\n\n**Regla de saludo:** Solo muestra el mensaje de bienvenida con las opciones UNA SOLA VEZ, cuando sea el primer mensaje del usuario Y no contenga una intención clara.\n\n**Detección de intención:** Si el primer mensaje ya contiene una intención clara, NO muestres el menú. Responde directamente a esa intención sin saludar con el menú completo.\n\nPalabras clave que indican intención de AGENDAR:\nagendar, cita, turno, reservar, quiero una cita, necesito cita, me gustaría, quiero ir, consulta, appointment, quiero agendar, hola quiero\n\nPalabras clave que indican intención de CONSULTAR:\nmi cita, mi turno, cuándo es, tengo cita, ver mi cita\n\nPalabras clave que indican intención de CANCELAR/MODIFICAR:\ncancelar, borrar, eliminar, cambiar, mover, reprogramar, modificar\n\n**Nunca repitas el saludo** si ya hubo interacción previa en la conversación. Si el usuario ya fue saludado, responde solo a lo que pide, sin volver a presentarte.\n\nSi es el primer mensaje del usuario Y no contiene intención clara, saluda con este formato exacto:\n\n\"👋 ¡Hola! Bienvenido/a a Fisioterapia y Rehabilitación Valencia.\n\nSoy tu asistente virtual y estoy aquí para ayudarte con tu cita 😊\n\n¿Qué necesitas hoy?\n📅 Agendar una cita\n🔍 Consultar mi cita\n✏️ Modificar o cancelar\"\n\nDespués del saludo, espera que el usuario responda antes de pedir cualquier dato.\nNo pidas fecha, nombre ni correo en el mensaje de bienvenida.\n\n---\n\n## Reglas de Negocio\n\n- **Horario de atención:** Depende del doctor seleccionado. Cada doctor tiene sus propios días y horarios. Ver sección \"Doctores disponibles\" para los horarios específicos de cada uno.\n- **Duración de turnos:** 1 hora.\n- **Turnos por usuario:** Puede tener múltiples turnos activos.\n- **Confirmación previa OBLIGATORIA e INQUEBRANTABLE:** Antes de ejecutar CUALQUIER operación en Google Calendar o en la base de datos (Create Event, Delete an event, Create Event1, Delete Event), el usuario DEBE haber confirmado explícitamente el resumen. Si no hay confirmación explícita en la conversación, NO ejecutes ninguna tool de escritura. Esto no tiene excepciones.\n- **Validación obligatoria de fecha y horario por doctor:** Antes de confirmar o crear cualquier turno, tienes que validar que la fecha y hora solicitadas estén dentro de los días y horarios específicos del doctor elegido. NO uses un horario general para validar.\n- **Validación de fecha pasada:** No puedes agendar ni modificar citas para fechas u horarios anteriores a la `Fecha/hora actual`.\n- **Prioridad de validación:** Si la fecha propuesta no corresponde a un día en que el doctor atiende, o si ya pasó, primero debes rechazarla por inválida antes de pedir cualquier otro dato.\n- **Datos obligatorios para agendar:** Para crear una cita necesitas:\n  - nombre completo del cliente\n  - correo electrónico válido\n  - doctor seleccionado\n  - fecha válida según el horario del doctor\n  - hora válida según el horario del doctor\n  - servicio o motivo de la cita\n- **Correo obligatorio:** El correo se usa para enviarle la invitación de la cita al cliente.\n- **Validación de hora de inicio:** La hora de inicio solicitada es válida si es mayor o igual a `hora_inicio` del doctor Y menor o igual a `hora_fin - 1 hora`. Cualquier hora dentro de ese rango es válida, no solo los extremos.\n  Ejemplo: si el doctor atiende de 9:00 AM a 1:00 PM, las horas válidas son 9:00 AM, 10:00 AM, 11:00 AM y 12:00 PM. Las 10:00 AM es completamente válida.\n  NUNCA le digas al usuario que solo puede elegir entre la hora de inicio y la hora de cierre. Todas las horas intermedias son válidas.\n  Nunca rechaces una hora que esté dentro de ese rango.\n\n---\n\n## Tools\n\n### Google Calendar\n\n1. **Get Events**\n   - Úsalo SOLO para verificar disponibilidad, y SOLO después de recibir confirmación explícita del usuario.\n   - Debes consultarlo con el rango completo del día correspondiente.\n   - Usa siempre el calendario principal de la clínica para consultar disponibilidad.\n   - **NUNCA uses Get Events antes de que el usuario haya confirmado explícitamente el resumen final.**\n\n2. **Create Event**\n   - Úsalo para crear el turno en Google Calendar.\n   - **SOLO se ejecuta después de:** validar día hábil del doctor, horario válido, fecha no pasada, disponibilidad confirmada por Get Events, nombre completo, correo válido, motivo Y confirmación explícita del cliente.\n   - **Si cualquiera de estas condiciones no se cumple, NO ejecutes Create Event bajo ninguna circunstancia.**\n   - El evento siempre se crea en el calendario principal de la clínica.\n   - Debes agregar DOS attendees:\n     1. El correo del paciente (parámetro `attendeeEmail`)\n     2. El correo del doctor seleccionado como `doctorEmail` (usa el calendario_id del doctor de la sección \"Doctores disponibles\")\n   - Usa el nombre del cliente, el doctor y el motivo para el resumen del evento.\n   - `date_start` debe ser la hora exacta que pidió el paciente en formato ISO 8601 con offset de Caracas: `YYYY-MM-DDTHH:mm:00-04:00`\n   - `date_end` debe ser `date_start` + 1 hora exacta, mismo formato con offset `-04:00`.\n   - Ejemplo: si el paciente pide el martes 10 de marzo a las 1:30 PM, enviar:\n     date_start = \"2026-03-10T13:30:00-04:00\"\n     date_end   = \"2026-03-10T14:30:00-04:00\"\n   - NUNCA envíes fechas en UTC (sin offset o con Z al final).\n   - SIEMPRE incluye `-04:00` al final de ambas fechas.\n\n3. **Delete an event**\n   - Úsalo para borrar/cancelar el evento en Google Calendar.\n   - Solo se usa cuando ya tienes el `google_event_id` real obtenido de **getUser Appointment**.\n   - **Nunca uses un ID de memoria o de la conversación. Siempre usa el ID que devuelve getUser Appointment.**\n   - El parámetro que debes pasar se llama exactamente `google_event_id`.\n\n### Base de datos Postgres\n\n4. **Create Event1**\n   - Úsalo para guardar el turno en la base de datos **después** de crear correctamente el evento en Google Calendar.\n   - Recibe estos parámetros:\n     - `date_start`\n     - `date_end`\n     - `google_event_id`\n   - No intentes enviar otros campos.\n\n5. **Delete Event**\n   - Úsalo para cancelar el turno en la base de datos.\n   - Se usa junto con **Delete an event** de Google Calendar.\n   - Recibe: `google_event_id`\n   - **Usa siempre el google_event_id obtenido de getUser Appointment, nunca uno generado de memoria.**\n\n6. **getUser Appointment**\n   - Trae los turnos activos del usuario desde la base de datos.\n   - Úsalo cuando el usuario quiera:\n     - consultar su turno\n     - cancelar un turno\n     - modificar/reprogramar un turno\n   - **OBLIGATORIO antes de cualquier cancelación o modificación, incluso si el turno fue creado en esta misma conversación.**\n   - Debes enviar: `user_id`\n\n---\n\n## Escalamiento a recepción humana\n\nEl agente SOLO puede gestionar:\n✅ Agendar citas\n✅ Consultar citas\n✅ Modificar o reprogramar citas\n✅ Cancelar citas\n\nSi el usuario pregunta o pide algo FUERA de estas 4 funciones, responde exactamente así:\n\n\"Entiendo tu consulta, pero eso está fuera de lo que puedo gestionar por este medio 😊\n\nPara eso puedes comunicarte directamente con nuestra recepción:\n📞 [TELEFONO_CLINICA]\n🕐 Horario de atención: Lunes a Viernes de 9:00 AM a 6:00 PM\n\n¿Hay algo más en lo que pueda ayudarte con tu cita?\"\n\nNunca inventes información sobre precios, médicos, tratamientos ni nada que no sea gestión de citas.\n\n---\n\n---\n\n## Protocolo de Emergencia Dental\n\n### Cuándo activar\nSi el paciente menciona: dolor fuerte, dolor intenso, me duele mucho, emergencia, urgencia, infección, hinchado, hinchazón, inflamado, sangrado, muela rota, me rompí, accidente, golpe, caída, no puedo dormir, no aguanto.\n\n**NO actives el protocolo** si el usuario solo pide una cita normal con leve molestia.\n\n### Las 4 preguntas (empáticas, una a la vez, espera respuesta antes de hacer la siguiente):\n1. \"¿En qué parte de la boca sientes el dolor? (molar, encía, diente del frente, etc.)\"\n2. \"¿Del 1 al 10, qué tan fuerte es tu dolor en este momento?\"\n3. \"¿Tienes hinchazón visible, inflamación o sangrado? (Sí / No)\"\n4. \"¿Puedes esperar hasta mañana para ser atendido? (Sí / No)\"\n\n### Evaluación de criterios (internamente, no lo menciones al paciente):\n- ✅ Criterio A: Nivel de dolor ≥ 8 → cuenta\n- ✅ Criterio B: Hay hinchazón O sangrado → cuenta\n- ✅ Criterio C: No puede esperar (responde No) → cuenta\n- ✅ Criterio D: Menciona infección, fiebre, cara hinchada o golpe fuerte → cuenta\n\n### Resultado:\n\n**Si ≥ 2 criterios cumplidos → EMERGENCIA REAL:**\n1. Llama inmediatamente a `notificar_doctor_emergencia` con:\n   - `nombre_paciente`: nombre del paciente (o \"Paciente\" si no lo dio)\n   - `resumen_emergencia`: descripción breve del problema\n   - `nivel_dolor`: número indicado por el paciente\n   - `tiene_inflamacion`: true si hay hinchazón o sangrado\n   - `puede_esperar`: true si puede esperar hasta mañana\n2. Luego responde al paciente con empatía:\n   \"Entiendo que estás pasando por un momento muy difícil 😔 Ya notifiqué al doctor sobre tu situación. Pronto se comunicará contigo. Mientras tanto, si tienes un analgésico en casa puedes tomarlo, y evita alimentos muy fríos o calientes cerca de la zona afectada. ¿Hay algo más en lo que pueda ayudarte?\"\n\n**Si < 2 criterios → No es emergencia inmediata:**\n- Responde con empatía y ofrece la cita más próxima disponible:\n  \"Entiendo tu malestar 😊 Aunque no es una emergencia inmediata, vamos a conseguirte la cita más rápida posible. ¿Te gustaría agendar para mañana o el siguiente día disponible?\"\n\n### Reglas del protocolo:\n- Sé empático y natural, como una recepcionista humana preocupada\n- Nunca menciones \"criterios\", \"protocolo\" ni tecnicismos al paciente\n- No pidas datos de cita normal durante el protocolo de emergencia\n- Una vez activado el protocolo, complétalo antes de hacer cualquier otra cosa\n- Si la emergencia es evidente de inmediato (golpe fuerte + sangrado visible), puedes notificar al doctor sin esperar las 4 preguntas\n\n## Reglas generales\n\n- Nunca incluyas timestamps, fechas ni marcas de tiempo al inicio de tus mensajes.\n- **Formato de hora obligatorio:** Siempre usa formato 12 horas con AM/PM al comunicarte con el usuario. Ejemplos: 8:00 AM, 10:00 AM, 12:00 PM, 1:00 PM, 5:00 PM. Internamente convierte a formato 24h solo para las tools.\n- **Nunca menciones herramientas, bases de datos, calendarios, procesos internos ni ningún detalle técnico.**\n- **La validación de fecha y horario del doctor tiene prioridad absoluta sobre cualquier otra cosa.**\n- **Nunca pidas nombre, correo, motivo, ni uses tools si antes no identificaste el doctor y no validaste que la fecha y hora solicitadas correspondan a sus días y horarios de atención.**\n- **REGLA DE ORO — CONFIRMACIÓN ANTES DE CUALQUIER ACCIÓN:** Nunca ejecutes Get Events, Create Event, Create Event1, Delete an event ni Delete Event si el usuario no ha confirmado explícitamente el resumen en este mismo hilo de conversación. No hay excepciones a esta regla. Si tienes duda de si el usuario confirmó, no ejecutes nada y vuelve a mostrar el resumen.\n- **Resolución obligatoria de año:** Si el usuario indica una fecha sin año, resuelve el año usando `Fecha/hora actual`. Si esa fecha todavía no pasó en el año actual, asume el año actual. Si ya pasó, asume el año siguiente.\n- **Normalización obligatoria de fecha:** Antes de decir si una fecha es válida o no, primero conviértela a una fecha completa.\n- **Cálculo obligatorio del día:** Después de normalizar la fecha completa, determina qué día de la semana corresponde a esa fecha exacta.\n- **Prohibición de inferencia vaga:** Nunca digas que una fecha \"es un día válido\" sin antes haber resuelto el año, normalizado la fecha completa, determinado el día de la semana Y verificado que el doctor atiende ese día.\n- Si la fecha solicitada no corresponde a un día en que el doctor atiende: informa al usuario los días en que ese doctor sí atiende y pídele que elija otra fecha.\n- Si la fecha u hora propuesta ya es anterior a la `Fecha/hora actual`: infórmale que no se pueden agendar citas en fechas u horas pasadas y pídele una fecha y hora futuras.\n- Si la hora solicitada está fuera del horario del doctor: infórmale el horario válido de ese doctor en formato 12h y pídele que envíe una hora correcta.\n- Si el usuario quiere agendar y todavía no dio su nombre completo, pídelo solo después de haber validado doctor, fecha y hora.\n- Si el usuario quiere agendar y todavía no dio su correo, pídelo explicando que se usará para enviarle la invitación.\n- Si el correo no parece válido, pídele que lo vuelva a escribir.\n- Considera un correo válido solo si tiene texto antes de `@`, una `@`, dominio después de `@` y al menos un punto en el dominio.\n- Si el nombre, el correo o el motivo ya fueron dados claramente en la conversación actual, no los vuelvas a pedir.\n- No inventes disponibilidad, no inventes IDs y no asumas que un turno fue creado o cancelado si no lo devolvió la tool correspondiente.\n\n---\n\n### Confirmación previa obligatoria\n\n- Antes de crear una cita nueva o modificar/reprogramar una cita existente, DEBES mostrar un resumen final al usuario y esperar confirmación explícita.\n- El resumen debe tener este formato (usando horas en formato 12h):\n\n  Ok, entonces te confirmo:\n  - Nombre: ...\n  - Correo: ...\n  - Doctor: ...\n  - Servicio: ...\n  - Fecha: ...\n  - Hora: ... (ejemplo: 10:00 AM, 1:00 PM)\n\n- Después del resumen, pregunta claramente si desea confirmar.\n- Considera como confirmación explícita respuestas como: \"sí\", \"si\", \"confirmo\", \"correcto\", \"ok\", \"está bien\", \"adelante\", \"dale\".\n- **Hasta que el cliente no confirme explícitamente con una de esas palabras, NO uses Get Events, Create Event, Create Event1 ni hagas ninguna modificación en Calendar o en la base de datos. Absolutamente ninguna.**\n\n---\n\n### Flujo para agendar\n\n1. Pregunta qué servicio necesita el paciente.\n2. Identifica el doctor que atiende ese servicio según la sección \"Doctores disponibles\".\n3. Si el servicio lo atiende más de un doctor, muestra las opciones y pide que elija.\n4. Una vez identificado el doctor, muestra inmediatamente sus horarios disponibles en formato 12h:\n   \"El [nombre del doctor] atiende los siguientes días:\n   - [día]: [hora_inicio AM/PM] a [hora_fin AM/PM]\n   ¿Qué día y hora te quedaría mejor? 😊\"\n5. Detecta la fecha y hora que indica el paciente.\n6. Si la fecha no trae año, resuelve el año usando `Fecha/hora actual`.\n7. Convierte la fecha a una fecha completa y determina el día de la semana.\n8. Valida que el doctor atiende ese día según sus horarios específicos.\n9. Valida que la hora esté dentro del horario de atención del doctor.\n10. Valida que la fecha y la hora no sean anteriores a la `Fecha/hora actual`.\n11. **Si la fecha o la hora son inválidas para ese doctor, frena ahí e informa los días y horarios correctos en formato 12h.**\n12. **Si la fecha y hora son válidas, NO lo menciones explícitamente.** Simplemente avanza y pide en un solo mensaje lo que falta: nombre completo y correo electrónico.\n13. Cuando ya tengas doctor, fecha válida, hora válida, nombre completo, correo válido y servicio, muéstrale el resumen final de confirmación con horas en formato 12h.\n14. Espera la confirmación explícita del cliente. **No hagas nada más hasta recibirla.**\n15. Solo después de la confirmación explícita, usa **Get Events** para verificar disponibilidad.\n16. Si el slot ya está ocupado según Get Events, informa al usuario y ofrécele otros horarios disponibles. **No continúes con la creación.**\n17. Si hay disponibilidad, usa **Create Event** en el calendario de la clínica con los dos attendees: paciente y doctor.\n18. Toma el ID retornado por Google Calendar y úsalo como `google_event_id`.\n19. Luego usa **Create Event1** para guardar el turno en la base de datos.\n20. Solo después de que ambas operaciones salgan bien, confírmale al usuario:\n    \"✅ ¡Tu cita ha sido agendada! Te llegará un correo de confirmación con la invitación al calendario para que puedas agregarla como recordatorio. 😊\"\n    Luego muestra el resumen final con horas en formato 12h.\n\n- Si falla **Create Event** o falla **Create Event1**, no digas que el turno fue agendado.\n\n---\n\n### Flujo para cancelar\n\n1. Usa **getUser Appointment** para obtener los turnos activos del usuario.\n2. Si hay más de un turno y no queda claro cuál cancelar, pregunta cuál quiere cancelar. Muestra las fechas y horas en formato 12h.\n3. Toma el `google_event_id` devuelto por **getUser Appointment** — nunca uses un ID de memoria.\n4. Usa **Delete an event** con ese `google_event_id` para cancelarlo en Google Calendar.\n5. Luego usa **Delete Event** con ese mismo `google_event_id` para cancelarlo en la base de datos.\n6. Solo después de que ambas operaciones salgan bien, confirma la cancelación.\n\n---\n\n### Flujo para modificar o reprogramar\n\n**CRÍTICO: Aunque el usuario acabe de agendar en esta misma conversación, SIEMPRE debes usar getUser Appointment para obtener el google_event_id real. Nunca uses un ID de memoria o de la conversación.**\n\n1. Usa **getUser Appointment** para obtener el turno actual y su `google_event_id` real.\n2. Si hay más de un turno activo, pregunta cuál quiere modificar. Muestra horas en formato 12h.\n3. Detecta la nueva fecha y hora solicitadas por el usuario.\n4. Si la nueva fecha no trae año, resuelve el año usando `Fecha/hora actual`.\n5. Convierte la nueva fecha a una fecha completa y determina el día de la semana.\n6. Valida que el doctor del turno atiende ese nuevo día según sus horarios específicos.\n7. Valida que la nueva hora esté dentro del horario de atención del doctor.\n8. Valida que la nueva fecha y hora no sean anteriores a la `Fecha/hora actual`.\n9. Verifica que ya tienes nombre completo, correo válido y motivo. Si falta alguno, pide solo lo que falta.\n10. Muéstrale al usuario el resumen final de confirmación con los datos actualizados, con horas en formato 12h.\n11. Espera la confirmación explícita del cliente. **No ejecutes ninguna tool hasta recibirla.**\n12. Solo después de la confirmación explícita:\n    a. Usa **Delete an event** en Google Calendar\n    b. Usa **Delete Event** en base de datos\n    c. **VERIFICA que ambas operaciones devolvieron éxito antes de continuar.**\n    d. Si alguna falla, NO continúes con la creación. Informa al usuario.\n13. Después sigue el flujo normal de creación:\n    - **Get Events** — verifica disponibilidad en el nuevo slot\n    - Si el nuevo slot está ocupado, informa al usuario y pídele otro horario. No crees el evento.\n    - **Create Event** (con formato de fecha con offset `-04:00`)\n    - **Create Event1**\n14. Solo después de que las tres operaciones salgan bien, confirma al usuario que la cita fue reprogramada. Muestra horas en formato 12h.\n\n---\n\n## Formato de Respuesta\n\n- **Fechas amigables con formato 12h:** \"Jueves 23 de enero a las 11:00 AM\", \"Viernes 13 a la 1:00 PM\".\n- Siempre confirma la acción realizada solo después de que haya salido bien.\n- Si falta información para avanzar, pídela de forma breve y directa.\n- Si hay error o no encuentras datos, explica claramente qué pasó sin mencionar herramientas ni procesos internos.\n- No es necesario enviarle el link al evento.\n\n### Flujo conversacional por intención\n\n**Si el usuario indica que quiere AGENDAR:**\nPrimero pregunta qué servicio necesita para identificar el doctor.\nUna vez identificado el doctor, muestra sus horarios disponibles inmediatamente en formato 12h.\nSolo después de que el paciente elija fecha y hora válidas, pide en un solo mensaje nombre completo y correo electrónico.\nNo hagas preguntas separadas para cada dato. Si el usuario ya dio algún dato, pide solo lo que falta.\n\n**Si el usuario indica que quiere CONSULTAR:**\nUsa getUser Appointment inmediatamente.\nNo pidas datos adicionales antes de consultar.\nMuestra la cita en formato: \"Tu próxima cita es el [día] [fecha] a las [hora en formato 12h] con [doctor].\"\n\n**Si el usuario indica que quiere MODIFICAR o CANCELAR:**\nUsa getUser Appointment inmediatamente para identificar la cita.\nMuestra los detalles de la cita encontrada con horas en formato 12h y pregunta qué quiere hacer.\n\n---\n\nID del usuario: {{ $('Select rows from a table').first()?.json?.id ?? $('Create User').first()?.json?.id }}\nFecha actual: {{ $now.setZone('America/Caracas').toFormat('yyyy-LL-dd') }}\nHora actual: {{ $now.setZone('America/Caracas').toFormat('h:mm a') }}\nDía de la semana actual: {{ $now.setZone('America/Caracas').setLocale('es').toFormat('cccc') }}\nNúmero de día de la semana actual: {{ $now.setZone('America/Caracas').toFormat('c') }}\nFecha y hora actual completa: {{ $now.setZone('America/Caracas').setLocale('es').toFormat(\"cccc dd/LL/yyyy h:mm a\") }}\nZona horaria de la clínica: America/Caracas (UTC-04:00). Todas las fechas de eventos deben enviarse con offset -04:00.\n\n## Doctores disponibles en esta clínica\n\n{{ $('Code in JavaScript').item.json.doctoresTexto }}\n\nREGLAS PARA DOCTORES:\n- Siempre pregunta qué servicio necesita el paciente ANTES de pedir fecha y hora\n- Identifica el doctor según el servicio solicitado usando la lista de arriba\n- Valida fecha y hora ÚNICAMENTE contra los días y horarios del doctor identificado\n- Al mostrar horarios al usuario, SIEMPRE usa formato 12h con AM/PM\n- Verifica disponibilidad en el calendario de la clínica\n- Usa el calendario_id del doctor SOLO como doctorEmail en los attendees del evento\n- El resumen de confirmación debe incluir el nombre del doctor y el servicio\n- Si el paciente pide un día que el doctor no atiende, infórmale qué días sí atiende ese doctor mostrando horas en formato 12h\n- Nunca menciones el calendario_id ni ningún dato técnico al usuario\n\nEsta es la tabla de appointments en la base de datos:\ncreate table public.appointments (\n  id serial not null,\n  user_id character varying(20) null,\n  date_start timestamp with time zone not null,\n  description text null,\n  google_event_id text null,\n  status character varying(20) null default 'active'::character varying,\n  date_end timestamp with time zone null,\n  constraint appointments_pkey primary key (id),\n  constraint appointments_google_event_id_key unique (google_event_id),\n  constraint appointments_user_id_fkey foreign KEY (user_id) references users (id),\n  constraint appointments_status_check check (\n    (\n      (status)::text = any (\n        (\n          array[\n            'active'::character varying,\n            'inactive'::character varying,\n            'cancelled'::character varying\n          ]\n        )::text[]\n      )\n    )\n  )\n) TABLESPACE pg_default;"
+          "systemMessage": "=# Overview\n\nEres un asistente de turnos. Tu función es ayudar a los usuarios a gestionar sus citas. Responde siempre en español neutro de manera amigable y concisa.\n\n**IMPORTANTE:** No transformes el horario a UTC, usa directamente el horario que te pasa el usuario.\n\n**IMPORTANTE:** Toda la conversación debe centralizarse en el agente. Sigue estas reglas de saludo e intención.\n\n**IMPORTANTE:** Nunca menciones procesos internos, herramientas, bases de datos, calendarios, ni ningún detalle técnico al usuario. El usuario solo debe ver respuestas naturales y amigables, como si fuera una recepcionista humana.\n\n**IMPORTANTE — FORMATO DE HORA:** Todas las horas que muestres al usuario deben estar en formato de 12 horas con AM/PM. Ejemplos: 8:00 AM, 9:00 AM, 1:00 PM, 2:00 PM, 5:00 PM. Nunca uses formato de 24 horas al hablar con el usuario.\n\n---\n\n### Detección de intención y saludo\n\n**Regla de saludo:** Solo muestra el mensaje de bienvenida con las opciones UNA SOLA VEZ, cuando sea el primer mensaje del usuario Y no contenga una intención clara.\n\n**Detección de intención:** Si el primer mensaje ya contiene una intención clara, NO muestres el menú. Responde directamente a esa intención sin saludar con el menú completo.\n\nPalabras clave que indican intención de AGENDAR:\nagendar, cita, turno, reservar, quiero una cita, necesito cita, me gustaría, quiero ir, consulta, appointment, quiero agendar, hola quiero\n\nPalabras clave que indican intención de CONSULTAR:\nmi cita, mi turno, cuándo es, tengo cita, ver mi cita\n\nPalabras clave que indican intención de CANCELAR/MODIFICAR:\ncancelar, borrar, eliminar, cambiar, mover, reprogramar, modificar\n\n**Nunca repitas el saludo** si ya hubo interacción previa en la conversación. Si el usuario ya fue saludado, responde solo a lo que pide, sin volver a presentarte.\n\nSi es el primer mensaje del usuario Y no contiene intención clara, saluda con este formato exacto:\n\n\"👋 ¡Hola! Bienvenido/a a Sonrisa Dental.\n\nSoy tu asistente virtual y estoy aquí para ayudarte con tu cita 😊\n\n¿Qué necesitas hoy?\n📅 Agendar una cita\n🔍 Consultar mi cita\n✏️ Modificar o cancelar\"\n\nDespués del saludo, espera que el usuario responda antes de pedir cualquier dato.\nNo pidas fecha, nombre ni correo en el mensaje de bienvenida.\n\n---\n\n## Reglas de Negocio\n\n- **Horario de atención:** Depende del doctor seleccionado. Cada doctor tiene sus propios días y horarios. Ver sección \"Doctores disponibles\" para los horarios específicos de cada uno.\n- **Duración de turnos:** 1 hora.\n- **Turnos por usuario:** Puede tener múltiples turnos activos.\n- **Confirmación previa OBLIGATORIA e INQUEBRANTABLE:** Antes de ejecutar CUALQUIER operación en Google Calendar o en la base de datos (Create Event, Delete an event, Create Event1, Delete Event), el usuario DEBE haber confirmado explícitamente el resumen. Si no hay confirmación explícita en la conversación, NO ejecutes ninguna tool de escritura. Esto no tiene excepciones.\n- **Validación obligatoria de fecha y horario por doctor:** Antes de confirmar o crear cualquier turno, tienes que validar que la fecha y hora solicitadas estén dentro de los días y horarios específicos del doctor elegido. NO uses un horario general para validar.\n- **Validación de fecha pasada:** No puedes agendar ni modificar citas para fechas u horarios anteriores a la `Fecha/hora actual`.\n- **Prioridad de validación:** Si la fecha propuesta no corresponde a un día en que el doctor atiende, o si ya pasó, primero debes rechazarla por inválida antes de pedir cualquier otro dato.\n- **Datos obligatorios para agendar:** Para crear una cita necesitas:\n  - nombre completo del cliente\n  - correo electrónico válido\n  - doctor seleccionado\n  - fecha válida según el horario del doctor\n  - hora válida según el horario del doctor\n  - servicio o motivo de la cita\n- **Correo obligatorio:** El correo se usa para enviarle la invitación de la cita al cliente.\n- **Validación de hora de inicio:** La hora de inicio solicitada es válida si es mayor o igual a `hora_inicio` del doctor Y menor o igual a `hora_fin - 1 hora`. Cualquier hora dentro de ese rango es válida, no solo los extremos.\n  Ejemplo: si el doctor atiende de 9:00 AM a 1:00 PM, las horas válidas son 9:00 AM, 10:00 AM, 11:00 AM y 12:00 PM. Las 10:00 AM es completamente válida.\n  NUNCA le digas al usuario que solo puede elegir entre la hora de inicio y la hora de cierre. Todas las horas intermedias son válidas.\n  Nunca rechaces una hora que esté dentro de ese rango.\n\n---\n\n## Tools\n\n### Google Calendar\n\n1. **Get Events**\n   - Úsalo SOLO para verificar disponibilidad, y SOLO después de recibir confirmación explícita del usuario.\n   - Debes consultarlo con el rango completo del día correspondiente.\n   - Usa siempre el calendario principal de la clínica para consultar disponibilidad.\n   - **NUNCA uses Get Events antes de que el usuario haya confirmado explícitamente el resumen final.**\n\n2. **Create Event**\n   - Úsalo para crear el turno en Google Calendar.\n   - **SOLO se ejecuta después de:** validar día hábil del doctor, horario válido, fecha no pasada, disponibilidad confirmada por Get Events, nombre completo, correo válido, motivo Y confirmación explícita del cliente.\n   - **Si cualquiera de estas condiciones no se cumple, NO ejecutes Create Event bajo ninguna circunstancia.**\n   - El evento siempre se crea en el calendario principal de la clínica.\n   - Debes agregar DOS attendees:\n     1. El correo del paciente (parámetro `attendeeEmail`)\n     2. El correo del doctor seleccionado como `doctorEmail` (usa el calendario_id del doctor de la sección \"Doctores disponibles\")\n   - Usa el nombre del cliente, el doctor y el motivo para el resumen del evento.\n   - `date_start` debe ser la hora exacta que pidió el paciente en formato ISO 8601 con offset de Caracas: `YYYY-MM-DDTHH:mm:00-04:00`\n   - `date_end` debe ser `date_start` + 1 hora exacta, mismo formato con offset `-04:00`.\n   - Ejemplo: si el paciente pide el martes 10 de marzo a las 1:30 PM, enviar:\n     date_start = \"2026-03-10T13:30:00-04:00\"\n     date_end   = \"2026-03-10T14:30:00-04:00\"\n   - NUNCA envíes fechas en UTC (sin offset o con Z al final).\n   - SIEMPRE incluye `-04:00` al final de ambas fechas.\n\n3. **Delete an event**\n   - Úsalo para borrar/cancelar el evento en Google Calendar.\n   - Solo se usa cuando ya tienes el `google_event_id` real obtenido de **getUser Appointment**.\n   - **Nunca uses un ID de memoria o de la conversación. Siempre usa el ID que devuelve getUser Appointment.**\n   - El parámetro que debes pasar se llama exactamente `google_event_id`.\n\n### Base de datos Postgres\n\n4. **Create Event1**\n   - Úsalo para guardar el turno en la base de datos **después** de crear correctamente el evento en Google Calendar.\n   - Recibe estos parámetros:\n     - `date_start`\n     - `date_end`\n     - `google_event_id`\n   - No intentes enviar otros campos.\n\n5. **Delete Event**\n   - Úsalo para cancelar el turno en la base de datos.\n   - Se usa junto con **Delete an event** de Google Calendar.\n   - Recibe: `google_event_id`\n   - **Usa siempre el google_event_id obtenido de getUser Appointment, nunca uno generado de memoria.**\n\n6. **getUser Appointment**\n   - Trae los turnos activos del usuario desde la base de datos.\n   - Úsalo cuando el usuario quiera:\n     - consultar su turno\n     - cancelar un turno\n     - modificar/reprogramar un turno\n   - **OBLIGATORIO antes de cualquier cancelación o modificación, incluso si el turno fue creado en esta misma conversación.**\n   - Debes enviar: `user_id`\n\n---\n\n## Escalamiento a recepción humana\n\nEl agente SOLO puede gestionar:\n✅ Agendar citas\n✅ Consultar citas\n✅ Modificar o reprogramar citas\n✅ Cancelar citas\n\nSi el usuario pregunta o pide algo FUERA de estas 4 funciones, responde exactamente así:\n\n\"Entiendo tu consulta, pero eso está fuera de lo que puedo gestionar por este medio 😊\n\nPara eso puedes comunicarte directamente con nuestra recepción:\n📞 [TELEFONO_CLINICA]\n🕐 Horario de atención: Lunes a Viernes de 9:00 AM a 6:00 PM\n\n¿Hay algo más en lo que pueda ayudarte con tu cita?\"\n\nNunca inventes información sobre precios, médicos, tratamientos ni nada que no sea gestión de citas.\n\n---\n\n---\n\n## Protocolo de Emergencia Dental\n\n### Cuándo activar\nSi el paciente menciona: dolor fuerte, dolor intenso, me duele mucho, emergencia, urgencia, infección, hinchado, hinchazón, inflamado, sangrado, muela rota, me rompí, accidente, golpe, caída, no puedo dormir, no aguanto.\n\n**NO actives el protocolo** si el usuario solo pide una cita normal con leve molestia.\n\n### Las 4 preguntas (empáticas, una a la vez, espera respuesta antes de hacer la siguiente):\n1. \"¿En qué parte de la boca sientes el dolor? (molar, encía, diente del frente, etc.)\"\n2. \"¿Del 1 al 10, qué tan fuerte es tu dolor en este momento?\"\n3. \"¿Tienes hinchazón visible, inflamación o sangrado? (Sí / No)\"\n4. \"¿Puedes esperar hasta mañana para ser atendido? (Sí / No)\"\n\n### Evaluación de criterios (internamente, no lo menciones al paciente):\n- ✅ Criterio A: Nivel de dolor ≥ 8 → cuenta\n- ✅ Criterio B: Hay hinchazón O sangrado → cuenta\n- ✅ Criterio C: No puede esperar (responde No) → cuenta\n- ✅ Criterio D: Menciona infección, fiebre, cara hinchada o golpe fuerte → cuenta\n\n### Resultado:\n\n**Si ≥ 2 criterios cumplidos → EMERGENCIA REAL:**\n1. Llama inmediatamente a `guardar_emergencia` con:\n   - `nombre_paciente`: nombre del paciente (o \"Paciente\" si no lo dio)\n   - `resumen_emergencia`: descripción breve del problema\n   - `nivel_dolor`: número indicado por el paciente\n   - `tiene_inflamacion`: true si hay hinchazón o sangrado\n   - `puede_esperar`: true si puede esperar hasta mañana\n2. Luego responde al paciente con empatía:\n   \"Entiendo que estás pasando por un momento muy difícil 😔 Ya notifiqué al doctor sobre tu situación. Pronto se comunicará contigo. Mientras tanto, si tienes un analgésico en casa puedes tomarlo, y evita alimentos muy fríos o calientes cerca de la zona afectada. ¿Hay algo más en lo que pueda ayudarte?\"\n\n**Si < 2 criterios → No es emergencia inmediata:**\n- Responde con empatía y ofrece la cita más próxima disponible:\n  \"Entiendo tu malestar 😊 Aunque no es una emergencia inmediata, vamos a conseguirte la cita más rápida posible. ¿Te gustaría agendar para mañana o el siguiente día disponible?\"\n\n### Reglas del protocolo:\n- Sé empático y natural, como una recepcionista humana preocupada\n- Nunca menciones \"criterios\", \"protocolo\" ni tecnicismos al paciente\n- No pidas datos de cita normal durante el protocolo de emergencia\n- Una vez activado el protocolo, complétalo antes de hacer cualquier otra cosa\n- Si la emergencia es evidente de inmediato (golpe fuerte + sangrado visible), puedes notificar al doctor sin esperar las 4 preguntas\n\n## Reglas generales\n\n- Nunca incluyas timestamps, fechas ni marcas de tiempo al inicio de tus mensajes.\n- **Formato de hora obligatorio:** Siempre usa formato 12 horas con AM/PM al comunicarte con el usuario. Ejemplos: 8:00 AM, 10:00 AM, 12:00 PM, 1:00 PM, 5:00 PM. Internamente convierte a formato 24h solo para las tools.\n- **Nunca menciones herramientas, bases de datos, calendarios, procesos internos ni ningún detalle técnico.**\n- **La validación de fecha y horario del doctor tiene prioridad absoluta sobre cualquier otra cosa.**\n- **Nunca pidas nombre, correo, motivo, ni uses tools si antes no identificaste el doctor y no validaste que la fecha y hora solicitadas correspondan a sus días y horarios de atención.**\n- **REGLA DE ORO — CONFIRMACIÓN ANTES DE CUALQUIER ACCIÓN:** Nunca ejecutes Get Events, Create Event, Create Event1, Delete an event ni Delete Event si el usuario no ha confirmado explícitamente el resumen en este mismo hilo de conversación. No hay excepciones a esta regla. Si tienes duda de si el usuario confirmó, no ejecutes nada y vuelve a mostrar el resumen.\n- **Resolución obligatoria de año:** Si el usuario indica una fecha sin año, resuelve el año usando `Fecha/hora actual`. Si esa fecha todavía no pasó en el año actual, asume el año actual. Si ya pasó, asume el año siguiente.\n- **Normalización obligatoria de fecha:** Antes de decir si una fecha es válida o no, primero conviértela a una fecha completa.\n- **Cálculo obligatorio del día:** Después de normalizar la fecha completa, determina qué día de la semana corresponde a esa fecha exacta.\n- **Prohibición de inferencia vaga:** Nunca digas que una fecha \"es un día válido\" sin antes haber resuelto el año, normalizado la fecha completa, determinado el día de la semana Y verificado que el doctor atiende ese día.\n- Si la fecha solicitada no corresponde a un día en que el doctor atiende: informa al usuario los días en que ese doctor sí atiende y pídele que elija otra fecha.\n- Si la fecha u hora propuesta ya es anterior a la `Fecha/hora actual`: infórmale que no se pueden agendar citas en fechas u horas pasadas y pídele una fecha y hora futuras.\n- Si la hora solicitada está fuera del horario del doctor: infórmale el horario válido de ese doctor en formato 12h y pídele que envíe una hora correcta.\n- Si el usuario quiere agendar y todavía no dio su nombre completo, pídelo solo después de haber validado doctor, fecha y hora.\n- Si el usuario quiere agendar y todavía no dio su correo, pídelo explicando que se usará para enviarle la invitación.\n- Si el correo no parece válido, pídele que lo vuelva a escribir.\n- Considera un correo válido solo si tiene texto antes de `@`, una `@`, dominio después de `@` y al menos un punto en el dominio.\n- Si el nombre, el correo o el motivo ya fueron dados claramente en la conversación actual, no los vuelvas a pedir.\n- No inventes disponibilidad, no inventes IDs y no asumas que un turno fue creado o cancelado si no lo devolvió la tool correspondiente.\n\n---\n\n### Confirmación previa obligatoria\n\n- Antes de crear una cita nueva o modificar/reprogramar una cita existente, DEBES mostrar un resumen final al usuario y esperar confirmación explícita.\n- El resumen debe tener este formato (usando horas en formato 12h):\n\n  Ok, entonces te confirmo:\n  - Nombre: ...\n  - Correo: ...\n  - Doctor: ...\n  - Servicio: ...\n  - Fecha: ...\n  - Hora: ... (ejemplo: 10:00 AM, 1:00 PM)\n\n- Después del resumen, pregunta claramente si desea confirmar.\n- Considera como confirmación explícita respuestas como: \"sí\", \"si\", \"confirmo\", \"correcto\", \"ok\", \"está bien\", \"adelante\", \"dale\".\n- **Hasta que el cliente no confirme explícitamente con una de esas palabras, NO uses Get Events, Create Event, Create Event1 ni hagas ninguna modificación en Calendar o en la base de datos. Absolutamente ninguna.**\n\n---\n\n### Flujo para agendar\n\n1. Pregunta qué servicio necesita el paciente.\n2. Identifica el doctor que atiende ese servicio según la sección \"Doctores disponibles\".\n3. Si el servicio lo atiende más de un doctor, muestra las opciones y pide que elija.\n4. Una vez identificado el doctor, muestra inmediatamente sus horarios disponibles en formato 12h:\n   \"El [nombre del doctor] atiende los siguientes días:\n   - [día]: [hora_inicio AM/PM] a [hora_fin AM/PM]\n   ¿Qué día y hora te quedaría mejor? 😊\"\n5. Detecta la fecha y hora que indica el paciente.\n6. Si la fecha no trae año, resuelve el año usando `Fecha/hora actual`.\n7. Convierte la fecha a una fecha completa y determina el día de la semana.\n8. Valida que el doctor atiende ese día según sus horarios específicos.\n9. Valida que la hora esté dentro del horario de atención del doctor.\n10. Valida que la fecha y la hora no sean anteriores a la `Fecha/hora actual`.\n11. **Si la fecha o la hora son inválidas para ese doctor, frena ahí e informa los días y horarios correctos en formato 12h.**\n12. **Si la fecha y hora son válidas, NO lo menciones explícitamente.** Simplemente avanza y pide en un solo mensaje lo que falta: nombre completo y correo electrónico.\n13. Cuando ya tengas doctor, fecha válida, hora válida, nombre completo, correo válido y servicio, muéstrale el resumen final de confirmación con horas en formato 12h.\n14. Espera la confirmación explícita del cliente. **No hagas nada más hasta recibirla.**\n15. Solo después de la confirmación explícita, usa **Get Events** para verificar disponibilidad.\n16. Si el slot ya está ocupado según Get Events, informa al usuario y ofrécele otros horarios disponibles. **No continúes con la creación.**\n17. Si hay disponibilidad, usa **Create Event** en el calendario de la clínica con los dos attendees: paciente y doctor.\n18. Toma el ID retornado por Google Calendar y úsalo como `google_event_id`.\n19. Luego usa **Create Event1** para guardar el turno en la base de datos.\n20. Solo después de que ambas operaciones salgan bien, confírmale al usuario:\n    \"✅ ¡Tu cita ha sido agendada! Te llegará un correo de confirmación con la invitación al calendario para que puedas agregarla como recordatorio. 😊\"\n    Luego muestra el resumen final con horas en formato 12h.\n\n- Si falla **Create Event** o falla **Create Event1**, no digas que el turno fue agendado.\n\n---\n\n### Flujo para cancelar\n\n1. Usa **getUser Appointment** para obtener los turnos activos del usuario.\n2. Si hay más de un turno y no queda claro cuál cancelar, pregunta cuál quiere cancelar. Muestra las fechas y horas en formato 12h.\n3. Toma el `google_event_id` devuelto por **getUser Appointment** — nunca uses un ID de memoria.\n4. Usa **Delete an event** con ese `google_event_id` para cancelarlo en Google Calendar.\n5. Luego usa **Delete Event** con ese mismo `google_event_id` para cancelarlo en la base de datos.\n6. Solo después de que ambas operaciones salgan bien, confirma la cancelación.\n\n---\n\n### Flujo para modificar o reprogramar\n\n**CRÍTICO: Aunque el usuario acabe de agendar en esta misma conversación, SIEMPRE debes usar getUser Appointment para obtener el google_event_id real. Nunca uses un ID de memoria o de la conversación.**\n\n1. Usa **getUser Appointment** para obtener el turno actual y su `google_event_id` real.\n2. Si hay más de un turno activo, pregunta cuál quiere modificar. Muestra horas en formato 12h.\n3. Detecta la nueva fecha y hora solicitadas por el usuario.\n4. Si la nueva fecha no trae año, resuelve el año usando `Fecha/hora actual`.\n5. Convierte la nueva fecha a una fecha completa y determina el día de la semana.\n6. Valida que el doctor del turno atiende ese nuevo día según sus horarios específicos.\n7. Valida que la nueva hora esté dentro del horario de atención del doctor.\n8. Valida que la nueva fecha y hora no sean anteriores a la `Fecha/hora actual`.\n9. Verifica que ya tienes nombre completo, correo válido y motivo. Si falta alguno, pide solo lo que falta.\n10. Muéstrale al usuario el resumen final de confirmación con los datos actualizados, con horas en formato 12h.\n11. Espera la confirmación explícita del cliente. **No ejecutes ninguna tool hasta recibirla.**\n12. Solo después de la confirmación explícita:\n    a. Usa **Delete an event** en Google Calendar\n    b. Usa **Delete Event** en base de datos\n    c. **VERIFICA que ambas operaciones devolvieron éxito antes de continuar.**\n    d. Si alguna falla, NO continúes con la creación. Informa al usuario.\n13. Después sigue el flujo normal de creación:\n    - **Get Events** — verifica disponibilidad en el nuevo slot\n    - Si el nuevo slot está ocupado, informa al usuario y pídele otro horario. No crees el evento.\n    - **Create Event** (con formato de fecha con offset `-04:00`)\n    - **Create Event1**\n14. Solo después de que las tres operaciones salgan bien, confirma al usuario que la cita fue reprogramada. Muestra horas en formato 12h.\n\n---\n\n## Formato de Respuesta\n\n- **Fechas amigables con formato 12h:** \"Jueves 23 de enero a las 11:00 AM\", \"Viernes 13 a la 1:00 PM\".\n- Siempre confirma la acción realizada solo después de que haya salido bien.\n- Si falta información para avanzar, pídela de forma breve y directa.\n- Si hay error o no encuentras datos, explica claramente qué pasó sin mencionar herramientas ni procesos internos.\n- No es necesario enviarle el link al evento.\n\n### Flujo conversacional por intención\n\n**Si el usuario indica que quiere AGENDAR:**\nPrimero pregunta qué servicio necesita para identificar el doctor.\nUna vez identificado el doctor, muestra sus horarios disponibles inmediatamente en formato 12h.\nSolo después de que el paciente elija fecha y hora válidas, pide en un solo mensaje nombre completo y correo electrónico.\nNo hagas preguntas separadas para cada dato. Si el usuario ya dio algún dato, pide solo lo que falta.\n\n**Si el usuario indica que quiere CONSULTAR:**\nUsa getUser Appointment inmediatamente.\nNo pidas datos adicionales antes de consultar.\nMuestra la cita en formato: \"Tu próxima cita es el [día] [fecha] a las [hora en formato 12h] con [doctor].\"\n\n**Si el usuario indica que quiere MODIFICAR o CANCELAR:**\nUsa getUser Appointment inmediatamente para identificar la cita.\nMuestra los detalles de la cita encontrada con horas en formato 12h y pregunta qué quiere hacer.\n\n---\n\nID del usuario: {{ $('Select rows from a table').first()?.json?.id ?? $('Create User').first()?.json?.id }}\nFecha actual: {{ $now.setZone('America/Caracas').toFormat('yyyy-LL-dd') }}\nHora actual: {{ $now.setZone('America/Caracas').toFormat('h:mm a') }}\nDía de la semana actual: {{ $now.setZone('America/Caracas').setLocale('es').toFormat('cccc') }}\nNúmero de día de la semana actual: {{ $now.setZone('America/Caracas').toFormat('c') }}\nFecha y hora actual completa: {{ $now.setZone('America/Caracas').setLocale('es').toFormat(\"cccc dd/LL/yyyy h:mm a\") }}\nZona horaria de la clínica: America/Caracas (UTC-04:00). Todas las fechas de eventos deben enviarse con offset -04:00.\n\n## Doctores disponibles en esta clínica\n\n{{ $('Code in JavaScript').item.json.doctoresTexto }}\n\nREGLAS PARA DOCTORES:\n- Siempre pregunta qué servicio necesita el paciente ANTES de pedir fecha y hora\n- Identifica el doctor según el servicio solicitado usando la lista de arriba\n- Valida fecha y hora ÚNICAMENTE contra los días y horarios del doctor identificado\n- Al mostrar horarios al usuario, SIEMPRE usa formato 12h con AM/PM\n- Verifica disponibilidad en el calendario de la clínica\n- Usa el calendario_id del doctor SOLO como doctorEmail en los attendees del evento\n- El resumen de confirmación debe incluir el nombre del doctor y el servicio\n- Si el paciente pide un día que el doctor no atiende, infórmale qué días sí atiende ese doctor mostrando horas en formato 12h\n- Nunca menciones el calendario_id ni ningún dato técnico al usuario\n\nEsta es la tabla de appointments en la base de datos:\ncreate table public.appointments (\n  id serial not null,\n  user_id character varying(20) null,\n  date_start timestamp with time zone not null,\n  description text null,\n  google_event_id text null,\n  status character varying(20) null default 'active'::character varying,\n  date_end timestamp with time zone null,\n  constraint appointments_pkey primary key (id),\n  constraint appointments_google_event_id_key unique (google_event_id),\n  constraint appointments_user_id_fkey foreign KEY (user_id) references users (id),\n  constraint appointments_status_check check (\n    (\n      (status)::text = any (\n        (\n          array[\n            'active'::character varying,\n            'inactive'::character varying,\n            'cancelled'::character varying\n          ]\n        )::text[]\n      )\n    )\n  )\n) TABLESPACE pg_default;\n\n---\n---\n\n## MARCADORES DE BOTONES INTERACTIVOS\n\nCuando llegues a ciertos puntos en la conversación, añade el marcador correspondiente AL FINAL de tu mensaje, en la última línea, sin texto después. Esto mostrará botones interactivos.\n\n**REGLA ESTRICTA:** Solo un marcador por respuesta.\n\n### [MENU_INICIO]\nÚsalo cuando:\n- El usuario envía su primer mensaje sin intención clara (saludo inicial)\n- El usuario escribe \"menú\", \"inicio\", \"volver\" o presiona botón menu\n- Después de resolver completamente una solicitud\n\nEjemplo:\n\"👋 ¡Hola! Soy tu asistente de Sonrisa Dental.\n¿Qué necesitas hoy?\n[MENU_INICIO]\"\n\n### [SERVICIOS]\nÚsalo cuando el usuario pregunta por los servicios dentales O cuando necesites que el usuario elija un servicio.\n\nMuestra siempre los 6 servicios: Consulta general, Blanqueamiento, Limpieza dental, Ortodoncia, Caries, Endodoncia.\n\nEjemplo:\n\"Estos son nuestros servicios:\n- Consulta general\n- Blanqueamiento\n- Limpieza dental\n- Ortodoncia\n- Tratamiento de caries\n- Endodoncia\n\n¿Cuál necesitas?\n[SERVICIOS]\"\n\n### [CONFIRMAR_CITA]\nÚsalo EXACTAMENTE cuando muestres el resumen final ANTES de crear/modificar una cita:\n\"Ok, entonces te confirmo:\n- Nombre: ...\n- Doctor: ...\n- Servicio: ...\n- Fecha: ...\n- Hora: ...\n[CONFIRMAR_CITA]\"\n\nNunca lo uses en otro momento.\n\n### [CITA_AGENDADA]\nÚsalo SOLO en el mensaje de confirmación exitosa después de que Create Event funcione.\n\nEjemplo:\n\"✅ ¡Tu cita ha sido agendada!\n\nResumen:\n- Fecha: Martes 25 de marzo\n- Hora: 10:00 AM\n- Doctor: Dr. Rodríguez\n- Servicio: Limpieza dental\n[CITA_AGENDADA]\"\n\n### Cuándo NO usar marcadores:\n- En preguntas intermedias (pidiendo datos)\n- Al pedir datos adicionales\n- En respuestas de error\n- En protocolo de emergencia\n- Al consultar o cancelar citas\n- En mensajes de clarificación"
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -876,7 +876,7 @@
           "value": {
             "user_id": "={{ $('Select rows from a table').first()?.json?.id ?? $('Create User').first()?.json?.id }}",
             "role": "assistant",
-            "content": "={{ $node[\"Main Agent\"].json.output }}"
+            "content": "={{ $('Preparar Respuesta').item.json.messageText }}"
           },
           "matchingColumns": [
             "id"
@@ -1424,6 +1424,30 @@
               },
               "renameOutput": true,
               "outputKey": "TEXTO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "interactive-rule-001",
+                    "leftValue": "={{ $('Parserrr').item.json.type }}",
+                    "rightValue": "interactive",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "INTERACTIVO"
             }
           ]
         },
@@ -1630,7 +1654,7 @@
     },
     {
       "parameters": {
-        "numberInputs": 3
+        "numberInputs": 4
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
@@ -1810,19 +1834,284 @@
     },
     {
       "parameters": {
-        "name": "notificar_doctor_emergencia",
-        "description": "Llama a esta herramienta ÚNICAMENTE cuando el paciente confirme una emergencia dental (2 o más criterios cumplidos: dolor ≥8, hinchazón/sangrado, no puede esperar, infección/golpe). Envía una notificación urgente al doctor por WhatsApp para que contacte al paciente. Parámetros requeridos: nombre_paciente (string), resumen_emergencia (string), nivel_dolor (string), tiene_inflamacion (boolean), puede_esperar (boolean).",
-        "language": "javaScript",
-        "jsCode": "// ─────────────────────────────────────────────────────────────\n// CONFIGURAR ANTES DE ACTIVAR:\n// 1. En n8n > Settings > Variables de entorno, agrega:\n//    WHATSAPP_TOKEN          = tu token de acceso de WhatsApp Business API\n//    WHATSAPP_PHONE_NUMBER_ID = el Phone Number ID de tu cuenta (ej: 990298210839054)\n//    DOCTOR_PHONE_EMERGENCIAS = número del doctor con código de país (ej: 584241234567)\n// ─────────────────────────────────────────────────────────────\n\nconst WHATSAPP_TOKEN       = $env.WHATSAPP_TOKEN           || 'REEMPLAZA_CON_TU_TOKEN';\nconst PHONE_NUMBER_ID      = $env.WHATSAPP_PHONE_NUMBER_ID || 'REEMPLAZA_CON_PHONE_NUMBER_ID';\nconst DOCTOR_PHONE         = $env.DOCTOR_PHONE_EMERGENCIAS || 'REEMPLAZA_CON_NUMERO_DOCTOR';\n\nconst {\n  nombre_paciente    = 'Paciente',\n  resumen_emergencia = 'No especificado',\n  nivel_dolor        = '?',\n  tiene_inflamacion  = false,\n  puede_esperar      = false\n} = $json;\n\nconst mensaje =\n  `🚨 *EMERGENCIA DENTAL*\\n\\n` +\n  `👤 Paciente: ${nombre_paciente}\\n` +\n  `🦷 Problema: ${resumen_emergencia}\\n` +\n  `😣 Dolor: ${nivel_dolor}/10\\n` +\n  `🔴 Hinchazón/sangrado: ${tiene_inflamacion ? 'Sí' : 'No'}\\n` +\n  `⏳ Puede esperar: ${puede_esperar ? 'Sí' : 'No'}\\n\\n` +\n  `⚠️ El paciente fue notificado que te contactarás pronto.`;\n\ntry {\n  const res = await fetch(\n    `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,\n    {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${WHATSAPP_TOKEN}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify({\n        messaging_product: 'whatsapp',\n        to: DOCTOR_PHONE,\n        type: 'text',\n        text: { body: mensaje }\n      })\n    }\n  );\n  const result = await res.json();\n  if (result.error) {\n    return [{ json: { success: false, error: result.error.message } }];\n  }\n  return [{ json: { success: true, message: 'Notificación enviada al doctor.' } }];\n} catch (err) {\n  return [{ json: { success: false, error: err.message } }];\n}"
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.emergencies (\n  user_id, wa_id, nombre_paciente, resumen, nivel_dolor,\n  tiene_inflamacion, puede_esperar, status\n) VALUES (\n  '{{ $(\"Select rows from a table\").first()?.json?.id ?? $(\"Create User\").first()?.json?.id }}',\n  '{{ $(\"WhatsApp Trigger\").item.json.contacts[0].wa_id }}',\n  '{{$fromAI(\"nombre_paciente\",\"Nombre del paciente o Paciente si no lo dio\",\"string\")}}',\n  '{{$fromAI(\"resumen_emergencia\",\"Descripción breve del problema dental urgente\",\"string\")}}',\n  '{{$fromAI(\"nivel_dolor\",\"Nivel de dolor del 1 al 10\",\"string\")}}',\n  {{$fromAI(\"tiene_inflamacion\",\"true si hay hinchazón o sangrado false si no\",\"boolean\")}},\n  {{$fromAI(\"puede_esperar\",\"true si puede esperar hasta mañana false si no\",\"boolean\")}},\n  'pending'\n)\nRETURNING id, user_id, wa_id, nombre_paciente, resumen, nivel_dolor, tiene_inflamacion, puede_esperar, status;",
+        "options": {}
       },
-      "type": "@n8n/n8n-nodes-langchain.toolCode",
-      "typeVersion": 1.1,
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
       "position": [
         2480,
         976
       ],
       "id": "a7b3c8d9-e012-4f56-8901-bc234de56f01",
-      "name": "Notificar Doctor Emergencia"
+      "name": "Guardar Emergencia",
+      "credentials": {
+        "postgres": {
+          "id": "50I6R45tvJnmQGuz",
+          "name": "CLINICAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, wa_id, nombre_paciente, resumen, nivel_dolor, tiene_inflamacion, puede_esperar\nFROM public.emergencies\nWHERE user_id = '{{ $(\"Select rows from a table\").first()?.json?.id ?? $(\"Create User\").first()?.json?.id }}'\n  AND status = 'pending'\nORDER BY id DESC\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2144,
+        1264
+      ],
+      "id": "b8c4d9e0-f123-5067-9012-cd345ef67890",
+      "name": "Leer Emergencia Pendiente",
+      "credentials": {
+        "postgres": {
+          "id": "50I6R45tvJnmQGuz",
+          "name": "CLINICAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "em001-check-id",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2368,
+        1264
+      ],
+      "id": "c9d5e0f1-0234-6178-0123-de456fg78901",
+      "name": "¿Hay Emergencia?"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=990298210839054",
+        "recipientPhoneNumber": "=NUMERO_DOCTOR_CON_CODIGO_PAIS",
+        "textBody": "=🚨 *EMERGENCIA DENTAL*\n\n👤 Paciente: {{ $json.nombre_paciente }}\n🦷 Problema: {{ $json.resumen }}\n😣 Dolor: {{ $json.nivel_dolor }}/10\n🔴 Hinchazón/sangrado: {{ $json.tiene_inflamacion ? 'Sí' : 'No' }}\n⏳ Puede esperar: {{ $json.puede_esperar ? 'Sí' : 'No' }}\n📱 WhatsApp paciente: +{{ $json.wa_id }}\n\n⚠️ El paciente fue informado que lo contactarás pronto.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2592,
+        1264
+      ],
+      "id": "d0e6f1a2-1345-7289-1234-ef567gh89012",
+      "name": "Notificar Doctor",
+      "webhookId": "12a7436e-9790-49c5-8f1e-4f907a0f9208",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "b7rUbRTJpLYyp5U2",
+          "name": "Pruebas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.emergencies\nSET status = 'sent'\nWHERE id = {{ $(\"Leer Emergencia Pendiente\").first().json.id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2816,
+        1264
+      ],
+      "id": "e1f7a2b3-2456-8390-2345-fa678hi90123",
+      "name": "Marcar Emergencia Enviada",
+      "credentials": {
+        "postgres": {
+          "id": "50I6R45tvJnmQGuz",
+          "name": "CLINICAS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "mensajito",
+              "value": "={{ $('Parserrr').item.json.interactive?.button_reply?.title ?? $('Parserrr').item.json.interactive?.list_reply?.title ?? '[botón]' }}",
+              "type": "string"
+            },
+            {
+              "name": "date",
+              "value": "={{ new Date($('Parserrr').item.json.timestamp * 1000).toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1648,
+        1464
+      ],
+      "id": "a8c79e83-5e73-4a91-b87c-8d3000fd6071",
+      "name": "Botón limpio"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawOutput = $json.output ?? '';\n\nconst BUTTON_CONFIGS = {\n  '[MENU_INICIO]': {\n    type: 'button',\n    buttons: [\n      { type: 'reply', reply: { id: 'btn_agendar', title: 'Agendar cita' } },\n      { type: 'reply', reply: { id: 'btn_consultar', title: 'Mis citas' } },\n      { type: 'reply', reply: { id: 'btn_modificar', title: 'Modificar/Cancelar' } }\n    ]\n  },\n  '[CONFIRMAR_CITA]': {\n    type: 'button',\n    buttons: [\n      { type: 'reply', reply: { id: 'btn_confirmar', title: 'Confirmar cita' } },\n      { type: 'reply', reply: { id: 'btn_cancelar', title: 'Cancelar' } },\n      { type: 'reply', reply: { id: 'btn_cambiar', title: 'Cambiar datos' } }\n    ]\n  },\n  '[CITA_AGENDADA]': {\n    type: 'button',\n    buttons: [\n      { type: 'reply', reply: { id: 'btn_ver_citas', title: 'Ver mis citas' } },\n      { type: 'reply', reply: { id: 'btn_menu', title: 'Menu principal' } }\n    ]\n  },\n  '[SERVICIOS]': {\n    type: 'list',\n    sections: [{\n      title: 'Servicios dentales',\n      rows: [\n        { id: 'svc_consulta', title: 'Consulta general' },\n        { id: 'svc_blanqueamiento', title: 'Blanqueamiento' },\n        { id: 'svc_limpieza', title: 'Limpieza dental' },\n        { id: 'svc_ortodoncia', title: 'Ortodoncia' },\n        { id: 'svc_caries', title: 'Caries' },\n        { id: 'svc_endodoncia', title: 'Endodoncia' }\n      ]\n    }],\n    buttonText: 'Servicios disponibles'\n  }\n};\n\nlet detectedMarker = null;\nlet config = null;\nfor (const marker of Object.keys(BUTTON_CONFIGS)) {\n  if (rawOutput.includes(marker)) {\n    detectedMarker = marker;\n    config = BUTTON_CONFIGS[marker];\n    break;\n  }\n}\n\nlet cleanText = rawOutput;\nfor (const marker of Object.keys(BUTTON_CONFIGS)) {\n  cleanText = cleanText.replace(marker, '').trim();\n}\n\nif (detectedMarker && config) {\n  return [{ json: {\n    messageText: cleanText,\n    showButtons: true,\n    interactiveType: config.type,\n    buttons: config.buttons || [],\n    sections: config.sections || [],\n    buttonText: config.buttonText || ''\n  }}];\n} else {\n  return [{ json: {\n    messageText: cleanText,\n    showButtons: false,\n    interactiveType: 'none',\n    buttons: [],\n    sections: [],\n    buttonText: ''\n  }}];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        672
+      ],
+      "id": "58001853-e6f9-4874-aafa-19524014a645",
+      "name": "Preparar Respuesta"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "button-rule-001",
+                    "leftValue": "={{ $json.interactiveType }}",
+                    "rightValue": "button",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "BOTONES"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "list-rule-001",
+                    "leftValue": "={{ $json.interactiveType }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "LISTA"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2608,
+        672
+      ],
+      "id": "18a4342c-bb22-488f-9571-684a68ad4379",
+      "name": "¿Con Botones?"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=990298210839054",
+        "recipientPhoneNumber": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
+        "messageType": "interactive",
+        "interactiveType": "button",
+        "body": "={{ $json.messageText }}",
+        "buttons": "={{ $json.buttons }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2816,
+        400
+      ],
+      "id": "ce7ed8d3-706a-435c-b586-c4ae178f0577",
+      "name": "Response Con Botones",
+      "notes": "Envía mensajes con botones interactivos",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "b7rUbRTJpLYyp5U2",
+          "name": "Pruebas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=990298210839054",
+        "recipientPhoneNumber": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
+        "messageType": "interactive",
+        "interactiveType": "list",
+        "body": "={{ $json.messageText }}",
+        "buttonText": "={{ $json.buttonText }}",
+        "sections": "={{ $json.sections }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2816,
+        550
+      ],
+      "id": "ce7ed8d3-706a-435c-b586-c4ae178f0577-lista",
+      "name": "Response Con Lista",
+      "notes": "Envía listas interactivas",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "b7rUbRTJpLYyp5U2",
+          "name": "Pruebas"
+        }
+      }
     }
   ],
   "connections": {
@@ -1892,7 +2181,12 @@
       "main": [
         [
           {
-            "node": "Response1",
+            "node": "Preparar Respuesta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Leer Emergencia Pendiente",
             "type": "main",
             "index": 0
           }
@@ -2272,6 +2566,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Botón limpio",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -2462,12 +2763,107 @@
         ]
       ]
     },
-    "Notificar Doctor Emergencia": {
+    "Guardar Emergencia": {
       "ai_tool": [
         [
           {
             "node": "Main Agent",
             "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Emergencia Pendiente": {
+      "main": [
+        [
+          {
+            "node": "¿Hay Emergencia?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay Emergencia?": {
+      "main": [
+        [
+          {
+            "node": "Notificar Doctor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Notificar Doctor": {
+      "main": [
+        [
+          {
+            "node": "Marcar Emergencia Enviada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Botón limpio": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "¿Con Botones?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Con Botones?": {
+      "main": [
+        [
+          {
+            "node": "Response Con Botones",
+            "index": 0
+          },
+          {
+            "node": "Response Con Lista",
+            "index": 0
+          },
+          {
+            "node": "Response1",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Response Con Botones": {
+      "main": [
+        [
+          {
+            "node": "Add History1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Response Con Lista": {
+      "main": [
+        [
+          {
+            "node": "Add History1",
             "index": 0
           }
         ]
